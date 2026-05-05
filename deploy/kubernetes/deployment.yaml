@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vps-mcp
+  labels:
+    app.kubernetes.io/name: vps-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vps-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vps-mcp
+    spec:
+      containers:
+        - name: vps-mcp
+          image: ghcr.io/bufordeeds/vps-mcp:latest
+          imagePullPolicy: IfNotPresent
+          # stdio transport: kagent execs the binary directly. For HTTP/SSE
+          # transport (once implemented), expose containerPort 8080 here.
+          env:
+            - name: VPS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: vps-mcp
+                  key: host
+            - name: VPS_SSH_KEY_PATH
+              value: /etc/vps-mcp/ssh_key
+            - name: LOG_LEVEL
+              value: info
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /etc/vps-mcp
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: vps-mcp
+            items:
+              - key: ssh_key
+                path: ssh_key
+                mode: 0400

@@ -1,0 +1,22 @@
+# Example kagent CRD wiring vps-mcp into a kagent Agent.
+#
+# IMPORTANT: kagent's CRD schema is still evolving — pin to a specific
+# release before relying on this. See https://kagent.dev/docs/ for the
+# current schema. The shape below is illustrative; adjust apiVersion and
+# fields to match the kagent version installed on your cluster.
+apiVersion: kagent.dev/v1alpha1
+kind: Agent
+metadata:
+  name: vps-devops
+spec:
+  modelConfig: anthropic-claude  # references a ModelConfig resource you've created
+  systemMessage: |
+    You are a DevOps copilot for a small fleet of personal Linux VPS servers.
+    Use the vps_* tools to answer questions about server health, container
+    status, recent web traffic, and disk usage. Always cite which tool you
+    called and quote the relevant lines from its output.
+  tools:
+    - type: McpServer
+      mcpServer:
+        # Run the MCP server as a sidecar / pod and reference it by name.
+        name: vps-mcp
