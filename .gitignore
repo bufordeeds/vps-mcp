@@ -9,7 +9,6 @@ vps-mcp
 *.out
 *.prof
 coverage.txt
-go.sum
 
 # Local config / secrets — never commit
 .env
