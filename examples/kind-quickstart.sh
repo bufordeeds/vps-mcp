@@ -87,7 +87,7 @@ cat <<EOF
 ==> Done.
 
 To open the kagent UI:
-  kubectl port-forward -n ${KAGENT_NAMESPACE} svc/kagent-ui 8080:80
+  kubectl port-forward -n ${KAGENT_NAMESPACE} svc/kagent-ui 8080:8080
   open http://localhost:8080
 
 Then pick the 'vps-devops' agent and try:
