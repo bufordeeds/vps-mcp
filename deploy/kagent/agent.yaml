@@ -1,0 +1,57 @@
+# A kagent Agent that uses the vps-mcp tool server as a DevOps copilot.
+# Tested against kagent v0.9.1 (https://kagent.dev/).
+#
+# Prereqs in this namespace:
+#   - The kagent installation (Helm chart `kagent-dev/kagent`)
+#   - A ModelConfig referenced below as `default-model-config` (created
+#     during `kagent install`; rename the ref to match yours)
+#   - The RemoteMCPServer in remotemcpserver.yaml applied
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: vps-devops
+  namespace: kagent
+spec:
+  description: DevOps copilot for a small fleet of personal Linux VPS servers.
+  type: Declarative
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |
+      You are a DevOps copilot for a Linux VPS. Use the vps_* tools to
+      answer questions about server health, container status, recent web
+      traffic, and disk usage.
+
+      Always cite which tool you called and quote the relevant lines from
+      its output. Prefer the smallest tool that answers the user's
+      question — for example, use `vps_health` for general health, not
+      `vps_disk_usage` followed by `vps_container_status`.
+
+      You cannot SSH directly. If a question cannot be answered with the
+      available tools, say so and suggest what would be needed.
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: vps-mcp
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames:
+            - vps_health
+            - vps_caddy_logs
+            - vps_container_status
+            - vps_disk_usage
+    a2aConfig:
+      skills:
+        - id: vps-health-check
+          name: VPS health check
+          description: Snapshot of uptime, load, disk, memory, and running containers.
+          tags: [devops, vps, health]
+          examples:
+            - "Is the VPS healthy?"
+            - "How's the server doing?"
+        - id: vps-traffic
+          name: Web traffic inspection
+          description: Recent visitors to a domain, parsed from Caddy access logs.
+          tags: [devops, caddy, logs]
+          examples:
+            - "Did anyone visit mosscreekdigital.com today?"
+            - "What's the most-requested URL on buford.dev right now?"

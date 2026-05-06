@@ -67,7 +67,9 @@ func (s *Server) ServeStdio(ctx context.Context, r io.Reader, w io.Writer) error
 		var req request
 		if err := json.Unmarshal(line, &req); err != nil {
 			s.cfg.Logger.Warn("invalid json-rpc payload", "err", err)
-			s.writeError(enc, nil, errParse, "parse error")
+			if encErr := enc.Encode(makeError(nil, errParse, "parse error")); encErr != nil && !errors.Is(encErr, io.ErrClosedPipe) {
+				s.cfg.Logger.Error("write parse error", "err", encErr)
+			}
 			continue
 		}
 
@@ -80,15 +82,17 @@ func (s *Server) ServeStdio(ctx context.Context, r io.Reader, w io.Writer) error
 	return nil
 }
 
-func (s *Server) handle(ctx context.Context, enc *json.Encoder, req request) {
+// processRequest dispatches a single JSON-RPC request and returns the
+// response to write. Notifications (requests with no ID) return nil so
+// transports can omit a response entirely.
+func (s *Server) processRequest(ctx context.Context, req request) *response {
 	if req.JSONRPC != "2.0" {
-		s.writeError(enc, req.ID, errInvalidRequest, "jsonrpc must be \"2.0\"")
-		return
+		return makeError(req.ID, errInvalidRequest, "jsonrpc must be \"2.0\"")
 	}
 
 	switch req.Method {
 	case "initialize":
-		s.writeResult(enc, req.ID, initializeResult{
+		return makeResult(req.ID, initializeResult{
 			ProtocolVersion: protocolVersion,
 			ServerInfo: serverInfo{
 				Name:    s.cfg.Name,
@@ -107,58 +111,62 @@ func (s *Server) handle(ctx context.Context, enc *json.Encoder, req request) {
 				InputSchema: t.InputSchema(),
 			}
 		}
-		s.writeResult(enc, req.ID, toolsListResult{Tools: descriptors})
+		return makeResult(req.ID, toolsListResult{Tools: descriptors})
 
 	case "tools/call":
 		var p toolsCallParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			s.writeError(enc, req.ID, errInvalidParams, "invalid params")
-			return
+			return makeError(req.ID, errInvalidParams, "invalid params")
 		}
 		tool := s.cfg.Registry.Get(p.Name)
 		if tool == nil {
-			s.writeError(enc, req.ID, errMethodNotFound, "tool not found: "+p.Name)
-			return
+			return makeError(req.ID, errMethodNotFound, "tool not found: "+p.Name)
 		}
 
 		text, err := tool.Call(ctx, p.Arguments)
 		if err != nil {
 			// Tool errors are returned as a successful response with isError=true
 			// per the MCP spec — that lets the LLM see the error and try again.
-			s.writeResult(enc, req.ID, toolsCallResult{
+			return makeResult(req.ID, toolsCallResult{
 				Content: []content{{Type: "text", Text: err.Error()}},
 				IsError: true,
 			})
-			return
 		}
-		s.writeResult(enc, req.ID, toolsCallResult{
+		return makeResult(req.ID, toolsCallResult{
 			Content: []content{{Type: "text", Text: text}},
 		})
 
 	case "notifications/initialized", "notifications/cancelled":
 		// Notifications never carry an ID and never get a response.
-		return
+		return nil
 
 	default:
-		if req.ID != nil {
-			s.writeError(enc, req.ID, errMethodNotFound, "method not found: "+req.Method)
+		if req.ID == nil {
+			return nil
 		}
+		return makeError(req.ID, errMethodNotFound, "method not found: "+req.Method)
 	}
 }
 
-func (s *Server) writeResult(enc *json.Encoder, id json.RawMessage, result any) {
-	if err := enc.Encode(response{JSONRPC: "2.0", ID: id, Result: result}); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+func (s *Server) handle(ctx context.Context, enc *json.Encoder, req request) {
+	resp := s.processRequest(ctx, req)
+	if resp == nil {
+		return
+	}
+	if err := enc.Encode(resp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 		s.cfg.Logger.Error("write response", "err", err)
 	}
 }
 
-func (s *Server) writeError(enc *json.Encoder, id json.RawMessage, code int, message string) {
-	if err := enc.Encode(response{
+func makeResult(id json.RawMessage, result any) *response {
+	return &response{JSONRPC: "2.0", ID: id, Result: result}
+}
+
+func makeError(id json.RawMessage, code int, message string) *response {
+	return &response{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   &rpcError{Code: code, Message: message},
-	}); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		s.cfg.Logger.Error("write error response", "err", err)
 	}
 }
 

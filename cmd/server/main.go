@@ -55,13 +55,18 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger.Info("starting vps-mcp", "transport", cfg.Transport, "host", cfg.VPSHost)
+	logger.Info("starting vps-mcp",
+		"transport", cfg.Transport,
+		"host", cfg.VPSHost,
+		"version", version,
+	)
 
 	switch cfg.Transport {
 	case "stdio":
 		return server.ServeStdio(ctx, os.Stdin, os.Stdout)
 	case "http":
-		return fmt.Errorf("http transport not yet implemented (see roadmap)")
+		logger.Info("listening", "addr", cfg.ListenAddr)
+		return server.ServeHTTP(ctx, cfg.ListenAddr)
 	default:
 		return fmt.Errorf("unknown transport %q", cfg.Transport)
 	}

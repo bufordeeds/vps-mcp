@@ -1,0 +1,15 @@
+# Registers the vps-mcp Service as an MCP tool source in kagent.
+# Tested against kagent v0.9.1 (https://kagent.dev/).
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: vps-mcp
+  # Adjust to match the namespace where vps-mcp's Deployment + Service live.
+  namespace: kagent
+spec:
+  description: VPS DevOps tools (health, container status, Caddy logs, disk usage)
+  protocol: STREAMABLE_HTTP
+  url: http://vps-mcp.kagent.svc.cluster.local:8080/mcp
+  timeout: 30s
+  sseReadTimeout: 5m0s
+  terminateOnClose: true

@@ -31,19 +31,34 @@ All tools shell out via SSH using a private key mounted as a Kubernetes Secret. 
 
 ## Quickstart
 
-Prerequisites: Go 1.22+, Docker, [kind](https://kind.sigs.k8s.io/), `kubectl`, an SSH key with access to your target VPS.
+Prerequisites: Go 1.22+, Docker, [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, an SSH key with access to your target VPS.
+
+### Local (stdio, fastest feedback loop)
 
 ```bash
-# 1. Build and run locally over stdio
 export VPS_HOST=user@your.vps.ip
 export VPS_SSH_KEY_PATH=$HOME/.ssh/id_ed25519
 go run ./cmd/server
+# server speaks JSON-RPC 2.0 over stdio — paste a request like:
+# {"jsonrpc":"2.0","id":1,"method":"tools/list"}
+```
 
-# 2. Or run the full kind + kagent demo
+### Local (HTTP)
+
+```bash
+MCP_TRANSPORT=http MCP_LISTEN_ADDR=:8080 go run ./cmd/server
+curl -s http://localhost:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
+```
+
+### End-to-end with kagent
+
+```bash
 ./examples/kind-quickstart.sh
 ```
 
-Once kagent is running, ask the agent things like:
+The script installs [kagent v0.9.1](https://github.com/kagent-dev/kagent/releases/tag/v0.9.1), deploys vps-mcp, registers it as a `RemoteMCPServer`, and applies a `vps-devops` `Agent`. Open the kagent UI and ask:
 
 - *"Is the VPS healthy?"* → `vps_health`
 - *"Did anyone visit example.com in the last hour?"* → `vps_caddy_logs`
@@ -78,16 +93,17 @@ Once kagent is running, ask the agent things like:
 ## Roadmap
 
 - [x] Repo scaffold + project structure
-- [x] Minimal MCP stdio server (initialize, tools/list, tools/call)
+- [x] Minimal MCP server (initialize, tools/list, tools/call)
+- [x] stdio transport
+- [x] HTTP transport (Streamable HTTP, single endpoint at `/mcp`)
 - [x] `vps_health` tool — fully working
+- [x] kagent integration: `RemoteMCPServer` + `Agent` pinned to v0.9.1
+- [x] CI green (vet, test, lint, docker build)
 - [ ] `vps_caddy_logs` — stub, needs Caddy JSON log parser
 - [ ] `vps_container_status` — stub, needs `docker ps` parser
 - [ ] `vps_disk_usage` — stub, needs `du` parser
-- [ ] HTTP/SSE transport
-- [ ] Dockerfile + K8s manifests verified end-to-end
-- [ ] kagent CRD example pinned to a real kagent release
 - [ ] Per-tool tests (table-driven)
-- [ ] CI green
+- [ ] End-to-end kind + kagent demo verified with screenshots/video
 
 ## Why this project
 

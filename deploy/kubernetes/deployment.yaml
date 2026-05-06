@@ -18,8 +18,10 @@ spec:
         - name: vps-mcp
           image: ghcr.io/bufordeeds/vps-mcp:latest
           imagePullPolicy: IfNotPresent
-          # stdio transport: kagent execs the binary directly. For HTTP/SSE
-          # transport (once implemented), expose containerPort 8080 here.
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
           env:
             - name: VPS_HOST
               valueFrom:
@@ -28,12 +30,26 @@ spec:
                   key: host
             - name: VPS_SSH_KEY_PATH
               value: /etc/vps-mcp/ssh_key
+            - name: MCP_TRANSPORT
+              value: http
+            - name: MCP_LISTEN_ADDR
+              value: ":8080"
             - name: LOG_LEVEL
               value: info
           volumeMounts:
             - name: ssh-key
               mountPath: /etc/vps-mcp
               readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
           resources:
             requests:
               cpu: 50m
