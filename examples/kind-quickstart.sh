@@ -8,31 +8,52 @@
 
 set -euo pipefail
 
-: "${VPS_HOST:?Set VPS_HOST=user@your.vps.ip}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Load REPO_ROOT/.env if present (anthropic_api_key, optionally
+# VPS_HOST and VPS_SSH_KEY_PATH).
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  set -a; . "${REPO_ROOT}/.env"; set +a
+fi
+
+# Allow either lower- or upper-case keys in the .env.
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${anthropic_api_key:-}}"
+
+: "${VPS_HOST:?Set VPS_HOST=user@your.vps.ip in .env or env}"
 : "${VPS_SSH_KEY_PATH:?Set VPS_SSH_KEY_PATH to the private key path}"
+: "${ANTHROPIC_API_KEY:?Set anthropic_api_key in .env}"
 
 CLUSTER_NAME="${CLUSTER_NAME:-vps-mcp-demo}"
-KAGENT_VERSION="${KAGENT_VERSION:-v0.9.1}"
+# Charts publish without the "v" prefix on the OCI tag.
+KAGENT_VERSION="${KAGENT_VERSION:-0.9.1}"
 KAGENT_NAMESPACE="${KAGENT_NAMESPACE:-kagent}"
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KAGENT_CRDS_CHART="oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds"
+KAGENT_CHART="oci://ghcr.io/kagent-dev/kagent/helm/kagent"
 
 echo "==> Creating kind cluster '${CLUSTER_NAME}' (skipping if exists)"
 if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
   kind create cluster --name "${CLUSTER_NAME}"
 fi
 
-echo "==> Installing kagent ${KAGENT_VERSION}"
-helm repo add kagent https://kagent-dev.github.io/kagent/helm 2>/dev/null || true
-helm repo update kagent
+echo "==> Installing kagent ${KAGENT_VERSION} (OCI charts)"
+
 # CRDs first.
-helm upgrade --install kagent-crds kagent/kagent-crds \
+helm upgrade --install kagent-crds "${KAGENT_CRDS_CHART}" \
   --namespace "${KAGENT_NAMESPACE}" --create-namespace \
   --version "${KAGENT_VERSION}"
-# Then the controller. You will be prompted to provide a model API key
-# (Anthropic or OpenAI) when this completes — see kagent's docs.
-helm upgrade --install kagent kagent/kagent \
+
+# Anthropic API key Secret — created before the controller so the
+# default ModelConfig finds it on first reconcile.
+kubectl create secret generic kagent-anthropic \
   --namespace "${KAGENT_NAMESPACE}" \
-  --version "${KAGENT_VERSION}"
+  --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Controller, with Anthropic as the default provider.
+helm upgrade --install kagent "${KAGENT_CHART}" \
+  --namespace "${KAGENT_NAMESPACE}" \
+  --version "${KAGENT_VERSION}" \
+  --set providers.default=anthropic
 
 echo "==> Building vps-mcp image and loading into kind"
 docker build -t vps-mcp:dev -f "${REPO_ROOT}/deploy/Dockerfile" "${REPO_ROOT}"

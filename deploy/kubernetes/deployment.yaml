@@ -14,6 +14,9 @@ spec:
       labels:
         app.kubernetes.io/name: vps-mcp
     spec:
+      securityContext:
+        # Group-owns secret-mounted files so the nonroot user can read them.
+        fsGroup: 65532
       containers:
         - name: vps-mcp
           image: ghcr.io/bufordeeds/vps-mcp:latest
@@ -61,6 +64,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            # distroless `nonroot` user UID/GID — K8s needs numeric values
+            # when runAsNonRoot is enforced.
+            runAsUser: 65532
+            runAsGroup: 65532
             capabilities:
               drop: [ALL]
       volumes:
@@ -70,4 +77,4 @@ spec:
             items:
               - key: ssh_key
                 path: ssh_key
-                mode: 0400
+                mode: 0440
